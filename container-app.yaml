@@ -1,0 +1,137 @@
+# Vaultwarden Container App Configuration
+# Azure Container Apps YAML Specification
+# Use this file to update the container app configuration via CLI:
+# az containerapp update --name vaultwarden --resource-group vaultwarden --yaml container-app.yaml
+
+properties:
+  environmentId: /subscriptions/eeb66ebc-9d90-41f3-b9b6-1247b2b3507d/resourceGroups/vaultwarden/providers/Microsoft.App/managedEnvironments/cae-vaultwarden
+  workloadProfileName: Consumption
+  
+  configuration:
+    ingress:
+      external: true
+      targetPort: 80
+      transport: http
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+    
+    # Secrets (update values as needed)
+    secrets:
+      - name: db-url
+        value: "" # Set via: az containerapp secret set --name vaultwarden --secrets db-url="postgresql://..."
+      - name: admin-token
+        value: "" # Set via: az containerapp secret set --name vaultwarden --secrets admin-token="your-token"
+    
+    # Auto-scaling rules
+    activeRevisionsMode: Single
+    
+  template:
+    containers:
+      - name: vaultwarden
+        image: vaultwarden/server:latest
+        
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        
+        env:
+          # Database connection
+          - name: DATABASE_URL
+            secretRef: db-url
+          
+          # Admin panel access token
+          - name: ADMIN_TOKEN
+            secretRef: admin-token
+          
+          # Signup configuration (set to 'true' to allow new registrations)
+          - name: SIGNUPS_ALLOWED
+            value: "false"
+          
+          # Data directory
+          - name: DATA_FOLDER
+            value: "/data"
+          
+          # Domain configuration (update with your custom domain or leave empty)
+          - name: DOMAIN
+            value: ""
+          
+          # WebSocket support for live sync
+          - name: WEBSOCKET_ENABLED
+            value: "true"
+          
+          # Logging level (trace, debug, info, warn, error, off)
+          - name: LOG_LEVEL
+            value: "info"
+          
+          # Additional security settings
+          - name: ROCKET_PORT
+            value: "80"
+          
+          - name: ROCKET_WORKERS
+            value: "10"
+          
+          # Disable registration of new organizations (if needed)
+          - name: INVITATIONS_ALLOWED
+            value: "true"
+          
+          # Password hints (disable for better security)
+          - name: SHOW_PASSWORD_HINT
+            value: "false"
+        
+        volumeMounts:
+          - volumeName: data
+            mountPath: /data
+    
+    # Scaling configuration
+    scale:
+      minReplicas: 1
+      maxReplicas: 3
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "10"
+    
+    # Volumes
+    volumes:
+      - name: data
+        storageName: vaultwarden-data
+        storageType: AzureFile
+
+# Usage Commands:
+# ================
+#
+# 1. Update entire container app configuration:
+#    az containerapp update --name vaultwarden --resource-group vaultwarden --yaml container-app.yaml
+#
+# 2. Update only secrets (more secure):
+#    az containerapp secret set --name vaultwarden --resource-group vaultwarden \
+#      --secrets db-url="postgresql://user:pass@host:5432/db?sslmode=require" \
+#                 admin-token="your-secure-token"
+#
+# 3. Update only environment variables (e.g., enable signups):
+#    az containerapp update --name vaultwarden --resource-group vaultwarden \
+#      --set-env-vars "SIGNUPS_ALLOWED=true"
+#
+# 4. Update container image:
+#    az containerapp update --name vaultwarden --resource-group vaultwarden \
+#      --image vaultwarden/server:latest
+#
+# 5. Scale replicas:
+#    az containerapp update --name vaultwarden --resource-group vaultwarden \
+#      --min-replicas 1 --max-replicas 5
+#
+# 6. View current configuration:
+#    az containerapp show --name vaultwarden --resource-group vaultwarden
+#
+# 7. View logs:
+#    az containerapp logs show --name vaultwarden --resource-group vaultwarden --follow
+#
+# 8. List revisions:
+#    az containerapp revision list --name vaultwarden --resource-group vaultwarden
+#
+# 9. Rollback to previous revision:
+#    az containerapp revision activate --name vaultwarden --resource-group vaultwarden \
+#      --revision <revision-name>
